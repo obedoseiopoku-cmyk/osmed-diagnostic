@@ -1402,6 +1402,74 @@ body.sidebar-collapsed #topbar,body.sidebar-collapsed #main-content{left:0;margi
   </div>
 </div>
 
+<!-- Edit Patient Modal -->
+<div class="modal-overlay" id="edit-patient-modal">
+  <div class="modal" style="max-width:680px;max-height:90vh;overflow-y:auto">
+    <div class="modal-header">
+      <h3 class="modal-title">✏️ Edit Patient Record</h3>
+      <div style="display:flex;align-items:center;gap:10px">
+        <span id="ep-role-badge" style="font-size:.72rem;padding:3px 10px;border-radius:20px;background:#f3f0ff;color:var(--primary);font-weight:600"></span>
+        <button class="modal-close" onclick="closeModal('edit-patient-modal')">✕</button>
+      </div>
+    </div>
+    <div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:10px 14px;margin-bottom:18px;font-size:.82rem;display:flex;gap:8px;align-items:flex-start">
+      <span style="font-size:1rem">⚠️</span>
+      <div><strong>Editing patient record.</strong> Changes are logged and cannot be undone. Only authorised roles may edit records after investigations.</div>
+    </div>
+    <div id="ep-permission-block" style="display:none;background:#fee2e2;border:1px solid #fca5a5;border-radius:8px;padding:14px;text-align:center;color:#991b1b;font-size:.88rem;font-weight:600">
+      🔒 You do not have permission to edit patient records.<br>
+      <span style="font-size:.78rem;font-weight:400">Only Admin, Manager, or Receptionist can edit patient details.</span>
+    </div>
+    <div id="ep-form-block">
+      <input type="hidden" id="ep-id"/>
+      <div class="form-row">
+        <div class="form-group"><label>First Name *</label><input type="text" id="ep-fname"/></div>
+        <div class="form-group"><label>Surname *</label><input type="text" id="ep-lname"/></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Email</label><input type="email" id="ep-email"/></div>
+        <div class="form-group"><label>Phone</label><input type="tel" id="ep-phone"/></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Residence</label><input type="text" id="ep-residence"/></div>
+        <div class="form-group"><label>Marital Status</label>
+          <select id="ep-marital"><option value="">— Select —</option><option>Single</option><option>Married</option><option>Divorced</option><option>Widowed</option></select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Gender</label>
+          <select id="ep-gender"><option>Male</option><option>Female</option></select>
+        </div>
+        <div class="form-group"><label>Religion</label>
+          <select id="ep-religion"><option value="">— Select —</option><option>Christianity</option><option>Islam</option><option>Traditional</option><option>Other</option></select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Year of Birth / Age</label><input type="text" id="ep-yob" placeholder="e.g. 1990 or 30"/></div>
+        <div class="form-group"><label>Insurance / Credit</label>
+          <select id="ep-insurance"><option value="">None (Cash)</option><option>NHIS</option><option>Enterprise</option><option>Metropolitan</option><option>Other Insurance</option><option>Credit</option></select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Insurance Number</label><input type="text" id="ep-insurance-num"/></div>
+        <div class="form-group"><label>Requesting Doctor</label><input type="text" id="ep-doctor"/></div>
+      </div>
+      <div class="form-group"><label>Examination Type</label>
+        <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:6px">
+          <label style="display:flex;align-items:center;gap:6px;font-weight:400;cursor:pointer"><input type="checkbox" id="ep-exam-path"> Pathology</label>
+          <label style="display:flex;align-items:center;gap:6px;font-weight:400;cursor:pointer"><input type="checkbox" id="ep-exam-ultra"> Ultrasound</label>
+          <label style="display:flex;align-items:center;gap:6px;font-weight:400;cursor:pointer"><input type="checkbox" id="ep-exam-radio"> Radiology</label>
+        </div>
+      </div>
+      <div class="form-group"><label>Clinical Notes</label><textarea id="ep-notes" style="min-height:70px"></textarea></div>
+      <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:18px">
+        <button class="btn btn-outline" onclick="closeModal('edit-patient-modal')">Cancel</button>
+        <button class="btn btn-primary" onclick="saveEditPatient()">💾 Save Changes</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 </main>
 
 </div><!-- /#app-shell -->
@@ -2278,9 +2346,111 @@ function renderSearch(){
         <button class="btn btn-outline btn-sm" onclick="viewPatient('${p.id}')">👁</button>
         ${p.status==='Pending'?`<button class="btn btn-teal btn-sm" onclick="openResultModal('${p.id}')">🧪</button>`:''}
         <button class="btn btn-purple btn-sm" onclick="openBillingModal('${p.id}')">💳</button>
+        <button class="btn btn-sm" onclick="openEditPatient('${p.id}')" style="background:#f59e0b;color:white;border:none" title="Edit patient record">✏️</button>
       </div></td>
     </tr>`;
   }).join(''):`<tr><td colspan="8"><div class="empty-state"><div class="icon">🔍</div><p>No patients found</p></div></td></tr>`;
+}
+
+// ══════════════════════════════════════════════════════
+//  EDIT PATIENT
+// ══════════════════════════════════════════════════════
+function canEditPatient(){
+  return currentStaff && ['Admin','Manager','Receptionist'].includes(currentStaff.role);
+}
+
+function openEditPatient(id){
+  const p = patients.find(x=>x.id===id);
+  if(!p){ showToast('Patient not found','error'); return; }
+  const modal = document.getElementById('edit-patient-modal');
+  const formBlock = document.getElementById('ep-form-block');
+  const permBlock = document.getElementById('ep-permission-block');
+  const roleBadge = document.getElementById('ep-role-badge');
+
+  // Show role badge
+  roleBadge.textContent = currentStaff ? currentStaff.role : 'Guest';
+
+  if(!canEditPatient()){
+    formBlock.style.display = 'none';
+    permBlock.style.display = 'block';
+    modal.classList.add('show');
+    return;
+  }
+
+  permBlock.style.display = 'none';
+  formBlock.style.display = 'block';
+
+  // Populate fields
+  document.getElementById('ep-id').value = p.id;
+  document.getElementById('ep-fname').value = p.fname || '';
+  document.getElementById('ep-lname').value = p.lname || p.fullName.split(' ').slice(1).join(' ') || '';
+  document.getElementById('ep-email').value = p.email || '';
+  document.getElementById('ep-phone').value = p.phone || '';
+  document.getElementById('ep-residence').value = p.residence || '';
+  document.getElementById('ep-marital').value = p.marital || '';
+  document.getElementById('ep-gender').value = p.gender || 'Male';
+  document.getElementById('ep-religion').value = p.religion || '';
+  document.getElementById('ep-yob').value = p.yob || p.age || '';
+  document.getElementById('ep-insurance').value = p.insurance || '';
+  document.getElementById('ep-insurance-num').value = p.insuranceNum || '';
+  document.getElementById('ep-doctor').value = p.doctor || '';
+  document.getElementById('ep-notes').value = p.notes || '';
+
+  // Examination checkboxes
+  const sample = (p.sample || '').toLowerCase();
+  document.getElementById('ep-exam-path').checked = sample.includes('pathology');
+  document.getElementById('ep-exam-ultra').checked = sample.includes('ultrasound');
+  document.getElementById('ep-exam-radio').checked = sample.includes('radiology');
+
+  modal.classList.add('show');
+}
+
+function saveEditPatient(){
+  const id = document.getElementById('ep-id').value;
+  const p = patients.find(x=>x.id===id);
+  if(!p){ showToast('Patient not found','error'); return; }
+  if(!canEditPatient()){ showToast('Permission denied','error'); return; }
+
+  const fname = document.getElementById('ep-fname').value.trim();
+  const lname = document.getElementById('ep-lname').value.trim();
+  if(!fname || !lname){ showToast('First name and surname are required','error'); return; }
+
+  // Collect exam types
+  const exams = [];
+  if(document.getElementById('ep-exam-path').checked) exams.push('Pathology');
+  if(document.getElementById('ep-exam-ultra').checked) exams.push('Ultrasound');
+  if(document.getElementById('ep-exam-radio').checked) exams.push('Radiology');
+
+  // Log the edit
+  if(!p.editLog) p.editLog = [];
+  p.editLog.push({
+    by: currentStaff ? (currentStaff.fname+' '+currentStaff.lname) : 'Unknown',
+    role: currentStaff ? currentStaff.role : '',
+    at: new Date().toLocaleString(),
+    prev: {fullName:p.fullName, phone:p.phone, email:p.email, doctor:p.doctor}
+  });
+
+  // Apply changes
+  p.fname = fname;
+  p.lname = lname;
+  p.fullName = fname+' '+lname;
+  p.email = document.getElementById('ep-email').value.trim();
+  p.phone = document.getElementById('ep-phone').value.trim();
+  p.residence = document.getElementById('ep-residence').value.trim();
+  p.marital = document.getElementById('ep-marital').value;
+  p.gender = document.getElementById('ep-gender').value;
+  p.religion = document.getElementById('ep-religion').value;
+  p.yob = document.getElementById('ep-yob').value.trim();
+  p.insurance = document.getElementById('ep-insurance').value;
+  p.insuranceNum = document.getElementById('ep-insurance-num').value.trim();
+  p.doctor = document.getElementById('ep-doctor').value.trim();
+  p.notes = document.getElementById('ep-notes').value.trim();
+  p.sample = exams.join(', ');
+
+  closeModal('edit-patient-modal');
+  renderSearch();
+  renderDashboard();
+  showToast('Patient record updated successfully ✓','success');
 }
 
 // ══════════════════════════════════════════════════════
